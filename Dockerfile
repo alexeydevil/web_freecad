@@ -145,3 +145,10 @@ RUN cmake -G Ninja \
  
 RUN ninja install
 
+
+#######################
+# create microservice #
+#######################
+WORKDIR /opt/webcad_service
+COPY http_server.py /opt/webcad_service/http_server.py
+COPY opencad_wrapper.py /opt/webcad_service/opencad_wrapper.py
