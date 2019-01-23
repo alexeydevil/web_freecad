@@ -1,111 +1,147 @@
+# trigger build 
 FROM ubuntu:16.04
 
-ENV PYTHON_VERSION 3.7.2
-ENV PYTHON_MINOR_VERSION 3.7
-ENV PYTHON_SUFFIX_VERSION .cpython-37m
-ENV PYTHON_BIN_VERSION python3.7m
-ENV PYTHON_PIP_VERSION 18.0
+USER root
 
-ENV FREECAD_VERSION master
-ENV FREECAD_REPO git://github.com/FreeCAD/FreeCAD.git
+ENV CXX=g++-8
+ENV CC=gcc-8
+
+ENV PYTHON_VERSION 3.5.2
+ENV PYTHON_MINOR_VERSION 3.5
+ENV PYTHON_SUFFIX_VERSION .cpython-35m
+ENV PYTHON_BIN_VERSION python3.5m
+ENV PYTHON_PIP_VERSION 19.0
+
+######################
+# start packages #
+######################
+RUN apt-get update
+RUN apt-get install -y software-properties-common
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+RUN apt-get update
+RUN apt-get install -y \
+    python$PYTHON_MINOR_VERSION \
+    python$PYTHON_MINOR_VERSION-dev \
+    wget \
+    git \
+    build-essential \
+    libgl1-mesa-dev \
+    libfreetype6-dev \
+    libglu1-mesa-dev \
+    libzmq3-dev \
+    libsqlite3-dev \
+    libboost-all-dev \
+    libicu-dev \
+    libgl2ps-dev \
+    libfreeimage-dev \
+    libtbb-dev \
+    g++-8 \
+    libopenblas-dev \
+    cmake \
+    swig \
+    ninja-build \
+    xvfb \
+    gtk+-3.0 \
+    libgstreamer-plugins-base1.0-dev \
+    python3-pip
+
+RUN pip3 install pip --upgrade
+RUN pip3 install wxpython
+RUN pip3 install PyVirtualDisplay
+
+
+#######
+# OCE #
+#######
+WORKDIR /opt/build
+RUN git clone https://github.com/tpaviot/oce
+RUN mkdir oce/build && mkdir oce/install
+WORKDIR /opt/build/oce/build
+RUN git checkout OCE-0.18.3
+
+RUN cmake -G Ninja \
+ -DCMAKE_BUILD_TYPE=Release \
+ -DOCE_TESTING:BOOL=OFF \
+ -DOCE_BUILD_SHARED_LIB:BOOL=ON \
+ -DOCE_VISUALISATION:BOOL=ON \
+ -DOCE_DATAEXCHANGE:BOOL=ON \
+ -DOCE_OCAF:BOOL=ON \
+ -DOCE_DRAW:BOOL=OFF \
+ -DOCE_WITH_GL2PS:BOOL=ON \
+ -DOCE_WITH_FREEIMAGE:BOOL=ON \
+ -DOCE_MULTITHREAD_LIBRARY:STRING="TBB" \
+ -DOCE_INSTALL_PREFIX=/usr/local/share/oce \
+ ..
+
+RUN ninja install
+
+RUN echo "/usr/local/share/oce/lib" >> /etc/ld.so.conf.d/pythonocc.conf
+RUN ldconfig
+RUN cp -R /usr/local/share/oce/share/oce-0.18/src/ /usr/local/share/oce/
+
+#########
+# smesh #
+#########
+WORKDIR /opt/build
+RUN git clone https://github.com/tpaviot/smesh
+RUN mkdir smesh/build && mkdir smesh/install
+WORKDIR /opt/build/smesh/build
+RUN git checkout 6.7.6
+
+RUN cmake -G Ninja \
+ -DCMAKE_BUILD_TYPE=Release \
+ -DSMESH_TESTING:BOOL=OFF \
+ -DOCE_INCLUDE_PATH=/usr/local/share/oce/include/oce \
+ -DOCE_LIB_PATH=/usr/local/share/oce/lib \
+ -DCMAKE_INSTALL_PREFIX=/usr/local/share/smesh \
+ ..
+
+RUN ninja install
+
+RUN echo "/usr/local/share/smesh/lib" >> /etc/ld.so.conf.d/smesh.conf
+RUN ldconfig
+
+########
+# gmsh #
+########
+ENV CASROOT=/usr/local/share/oce
+WORKDIR /opt/build
+RUN git clone https://gitlab.onelab.info/gmsh/gmsh
+WORKDIR /opt/build/gmsh
+RUN git checkout gmsh_4_0_7
+WORKDIR /opt/build/gmsh/build
+
+RUN cmake -G Ninja \
+ -DCMAKE_BUilD_TYPE=Release \
+ -DENABLE_OCC=ON \
+ -DENABLE_OCC_CAF=ON \
+ -DCMAKE_INSTALL_PREFIX=/usr/local/share/gmsh \
+ ..
+
+RUN ninja install
+
+#############
+# pythonocc #
+#############
+WORKDIR /opt/build
+RUN git clone https://github.com/tpaviot/pythonocc-core
+WORKDIR /opt/build/pythonocc-core
+RUN git submodule update --init --remote --recursive
+WORKDIR /opt/build/pythonocc-core/build
+
+RUN cmake -G Ninja \
+ -DPYTHON_EXECUTABLE:PATH=/usr/lib/$PYTHON_BIN_VERSION \
+ -DPYTHON_INCLUDE_DIR:PATH=/usr/include/$PYTHON_BIN_VERSION \
+ -DPYTHON_LIBRARY:PATH=/usr/lib/x86_64-linux-gnu/lib${PYTHON_BIN_VERSION}.so \
+ -DPYTHONOCC_INSTALL_DIRECTORY:PATH=/usr/lib/python$PYTHON_MINOR_VERSION/dist-packages/OCC  \
+ -DPYTHONOCC_BUILD=Release \
+ -DPYTHONOCC_WRAP_OCAF=ON \
+ -DPYTHONOCC_WRAP_SMESH=ON \
+ -DOCE_INCLUDE_PATH=/usr/local/share/oce/include/oce \
+ -DOCE_LIB_PATH=/usr/local/share/oce/lib \
+ -DSMESH_INCLUDE_PATH=/usr/local/share/smesh/include/smesh \
+ -DSMESH_LIB_PATH=/usr/local/share/smesh/lib \
+ ..
  
+RUN ninja install
 
-# Собираем стартовый образ с набором необходимых нам пакетов
-RUN \
-    pack_build="git \
-                python$PYTHON_MINOR_VERSION \
-                python$PYTHON_MINOR_VERSION-dev \
-                wget \
-                build-essential \
-                cmake \
-                libtool \
-                libxerces-c-dev \
-                libboost-dev \
-                libboost-filesystem-dev \
-                libboost-regex-dev \
-                libboost-program-options-dev \
-                libboost-signals-dev \
-                libboost-thread-dev \
-                libboost-python-dev \
-                libqt4-dev \
-                libqt4-opengl-dev \
-                qt4-dev-tools \
-                liboce-modeling-dev \
-                liboce-visualization-dev \
-                liboce-foundation-dev \
-                liboce-ocaf-lite-dev \
-                liboce-ocaf-dev \
-                oce-draw \
-                libeigen3-dev \
-                libqtwebkit-dev \
-                libode-dev \
-                libzipios++-dev \
-                libfreetype6 \
-                libfreetype6-dev \
-                netgen-headers \
-                libmedc-dev \
-                libvtk6-dev \
-                libproj-dev \
-                gmsh " \
-    && apt update \
-    && apt install -y --no-install-recommends software-properties-common \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt update \
-    && apt install -y --no-install-recommends $pack_build
-
-# Устанавливаем пакетный менеджер для питона крайней версии
-RUN set -ex; \
-    \
-    wget -O get-pip.py 'https://bootstrap.pypa.io/get-pip.py'; \
-    \
-    python$PYTHON_MINOR_VERSION get-pip.py \
-        --disable-pip-version-check \
-        --no-cache-dir \
-        "pip==$PYTHON_PIP_VERSION" \
-    ; \
-    pip --version; \
-    \
-    find /usr/local -depth \
-        \( \
-            \( -type d -a \( -name test -o -name tests \) \) \
-            -o \
-            \( -type f -a \( -name '*.pyc' -o -name '*.pyo' \) \) \
-        \) -exec rm -rf '{}' +; \
-    rm -f get-pip.py
-
-ENV PYTHONPATH "/usr/local/lib:$PYTHONPATH"
-
-# Запускаем сборку непосредственно самого freecad
-RUN \
-    cd \
-    && git clone --branch "$FREECAD_VERSION" "$FREECAD_REPO" \
-    && mkdir freecad-build \
-    && cd freecad-build \
-    
-    # Build
-    && cmake \
-        -DBUILD_GUI=OFF \
-        -DBUILD_QT5=OFF \
-        -DPYTHON_EXECUTABLE=/usr/bin/$PYTHON_BIN_VERSION \
-        -DPYTHON_INCLUDE_DIR=/usr/include/$PYTHON_BIN_VERSION \
-        -DPYTHON_LIBRARY=/usr/lib/x86_64-linux-gnu/lib${PYTHON_BIN_VERSION}.so \
-        -DPYTHON_BASENAME=$PYTHON_SUFFIX_VERSION \
-        -DPYTHON_SUFFIX=$PYTHON_SUFFIX_VERSION \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DBUILD_FEM_NETGEN=ON ../FreeCAD \
-  \
-    && make -j$(nproc) \
-    && make install \
-    && cd \
-              \
-              # Clean
-                && rm FreeCAD/ freecad-build/ -fR \
-                && ln -s /usr/local/bin/FreeCAD /usr/bin/freecad-git
-
-# Clean
-RUN apt-get clean \
-    && rm /var/lib/apt/lists/* \
-          /usr/share/doc/* \
-          /usr/share/locale/* \
-          /usr/share/man/* \
-          /usr/share/info/* -fR    
