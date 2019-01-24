@@ -33,7 +33,6 @@ def export_to_image(params):
     xvfb_display.start()
 
     # Формируем площадку для отображения данных используя OpenCAD
-    #display, _, _, _ = init_display("wx", size=(width, height))
     display, _, _, _ = init_display("wx", size=screen_size)
 
     # Вычитываем переданный файл с расширением .stp
@@ -64,6 +63,5 @@ if __name__ == "__main__":
     parser.add_argument('-w', '--width', default=1280)
     parser.add_argument('-o', '--height', default=1024)
     parser.add_argument('-s', '--scale', default=1)
-    args = parser.parse_args()
 
     export_to_image(vars(parser.parse_args()))
