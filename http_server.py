@@ -17,18 +17,17 @@ from aiohttp import web  # основной модуль на asyncio для р�
 
 routes = web.RouteTableDef()
 
-HOST = "localhost"
-PORT = 3344
+PORT = int(os.getenv("MAIN_PORT")) or 3344
 
-TIMEOUT = 30
+TIMEOUT = int(os.getenv("TIMEOUT_FOR_CONVERT")) or 30
 TEMP_PATH_STP = "/tmp/share_{}.stp"
 TEMP_PATH_IMAGE = "/tmp/share_{}.jpg"
 
-THREAD_COUNT = 10         # Максимальное количество одновременно работающих потоков
-MAX_TASK_IN_QUEUE = 1000  # Максимальное количество задач в очереди
+THREAD_COUNT = int(os.getenv("MAX_COUNT_THREAD")) or 10  # Максимальное количество одновременно работающих потоков
+MAX_TASK_IN_QUEUE = int(os.getenv("MAX_TASKS")) or 1000   # Максимальное количество задач в очереди
 
-DEFAULT_WIDTH = 1280
-DEFAULT_HEIGHT = 1024
+DEFAULT_WIDTH = int(os.getenv("DEFAULT_WIDTH")) or 1280
+DEFAULT_HEIGHT = int(os.getenv("DEFAULT_HEIGHT")) or 1024
 DEFAULT_SCALE = 1  # Коэффициэнт сжатия изображения по диагонали
 
 MAX_CONTENT_SIZE = 1024**2*100 # Максимальный размер входного контента
@@ -331,4 +330,4 @@ workers=[Worker(task_queue) for x in range(THREAD_COUNT)]
 # Запускаем веб приложение для обслуживания пославленных задач
 app = web.Application(client_max_size=MAX_CONTENT_SIZE)
 app.add_routes(routes)
-web.run_app(app, host=HOST, port=PORT)
+web.run_app(app, port=PORT)

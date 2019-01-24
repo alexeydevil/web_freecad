@@ -1,16 +1,23 @@
 # trigger build 
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 USER root
 
 ENV CXX=g++-8
 ENV CC=gcc-8
 
-ENV PYTHON_VERSION 3.5.2
-ENV PYTHON_MINOR_VERSION 3.5
-ENV PYTHON_SUFFIX_VERSION .cpython-35m
-ENV PYTHON_BIN_VERSION python3.5m
-ENV PYTHON_PIP_VERSION 19.0
+ARG PYTHON_VERSION=3.6.7
+ARG PYTHON_MINOR_VERSION=3.6
+ARG PYTHON_SUFFIX_VERSION=.cpython-36m
+ARG PYTHON_BIN_VERSION=python3.6m
+ARG PYTHON_PIP_VERSION=19.0
+
+ENV MAIN_PORT 3344
+ENV TIMEOUT_FOR_CONVERT 30
+ENV MAX_COUNT_THREAD 10
+ENV MAX_TASKS 1000
+ENV DEFAULT_WIDTH 1280
+ENV DEFAULT_HEIGHT 1024
 
 ######################
 # start packages #
@@ -18,6 +25,7 @@ ENV PYTHON_PIP_VERSION 19.0
 RUN apt-get update
 RUN apt-get install -y software-properties-common
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test
+RUN add-apt-repository ppa:deadsnakes/ppa
 RUN apt-get update
 RUN apt-get install -y \
     python$PYTHON_MINOR_VERSION \
@@ -44,11 +52,11 @@ RUN apt-get install -y \
     gtk+-3.0 \
     libgstreamer-plugins-base1.0-dev \
     python3-pip
-
 RUN pip3 install pip --upgrade
-RUN pip3 install wxpython
-RUN pip3 install PyVirtualDisplay
-RUN pip3 install pyscreenshot
+RUN pip3 install wxpython \
+    PyVirtualDisplay \
+    pyscreenshot \
+    aiohttp
 
 #######
 # OCE #
@@ -152,3 +160,6 @@ RUN ninja install
 WORKDIR /opt/webcad_service
 COPY http_server.py /opt/webcad_service/http_server.py
 COPY opencad_wrapper.py /opt/webcad_service/opencad_wrapper.py
+
+EXPOSE  $MAIN_PORT
+CMD ["python3", "/opt/webcad_service/http_server.py"]
