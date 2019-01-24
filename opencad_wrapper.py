@@ -3,8 +3,10 @@
 
 # built-in
 import os
+import sys
+import argparse
 from PIL import Image
-from pyvirtualdisplay.smartdisplay import SmartDisplay
+from pyvirtualdisplay import Display
 
 # service
 from OCC.Display.SimpleGui import init_display
@@ -13,41 +15,55 @@ from OCC.Core.STEPControl import STEPControl_Reader
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
 
 
-def export_to_image(path_to_cad_file, width=1280, height=1024, result_format=".jpg"):
+def export_to_image(params):
     """
     Метод формирует по исходному файлу 
     изображение с заданным расширением
     """
 
     # Проверяем что переданный путь существует
-    if not os.path.isfile(path_to_cad_file) or \
-       not os.access(path_to_cad_file, os.R_OK):
-           return None
+    if not os.path.isfile(params.get("path_to_cad")) or \
+       not os.access(params.get("path_to_cad"), os.R_OK):
+           raise RuntimeError
 
-    # Получаем имя файла
-    result_file_name = path_to_cad_file.split('.')[0] + result_format
+    screen_size = (int(params.get("width")), int(params.get("height")))
 
     # Запускаем виртуальный дисплей, на котором будем формировать gui
-    with SmartDisplay(visible=0, size=(width, height), bgcolor='black') as disp:
-        # Формируем площадку для отображения данных используя OpenCAD
-        display, start_display, add_menu, add_function_to_menu = init_display("wx", size=(width, height))
+    xvfb_display = Display(visible=0, size=screen_size, bgcolor='black')
+    xvfb_display.start()
 
-        # Вычитываем переданный файл с расширением .stp
-        step_reader = STEPControl_Reader()
-        step_reader.ReadFile(path_to_cad_file)
-        step_reader.TransferRoot()
-        shape = step_reader.Shape()
+    # Формируем площадку для отображения данных используя OpenCAD
+    #display, _, _, _ = init_display("wx", size=(width, height))
+    display, _, _, _ = init_display("wx", size=screen_size)
 
-        # Отображаем полученную фигуру
-        display.DisplayShape(shape, update=True)
-        
-        # Снимаем дамп с экрана
-        display.View.Dump(result_file_name)
- 
-	# К сожалению, при работе через xvfb код выше 
-        # сохраняет данные только в формате bitmap, 
-        # из-за этого приходиться преобразовывать изображения вручную
-        im = Image.open(result_file_name)
-        im.save(result_file_name)
+    # Вычитываем переданный файл с расширением .stp
+    step_reader = STEPControl_Reader()
+    step_reader.ReadFile(params.get("path_to_cad"))
+    step_reader.TransferRoot()
+    shape = step_reader.Shape()
 
-    return result_file_name
+    # Отображаем полученную фигуру
+    display.DisplayShape(shape, update=True)
+    
+    # Снимаем дамп с экрана
+    display.View.Dump(params.get("path_to_image"))
+
+    # К сожалению, при работе через xvfb код выше 
+    # сохраняет данные только в формате bitmap, 
+    # из-за этого приходиться преобразовывать изображения вручную
+    img = Image.open(params.get("path_to_image"))
+    img.save(params.get("path_to_image"))
+    
+    xvfb_display.stop()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--path_to_cad')
+    parser.add_argument('-i', '--path_to_image')
+    parser.add_argument('-w', '--width', default=1280)
+    parser.add_argument('-o', '--height', default=1024)
+    parser.add_argument('-s', '--scale', default=1)
+    args = parser.parse_args()
+
+    export_to_image(vars(parser.parse_args()))

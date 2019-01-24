@@ -48,7 +48,7 @@ RUN apt-get install -y \
 RUN pip3 install pip --upgrade
 RUN pip3 install wxpython
 RUN pip3 install PyVirtualDisplay
-
+RUN pip3 install pyscreenshot
 
 #######
 # OCE #
