@@ -6,28 +6,39 @@ import os                # модуль для работы с файловой 
 import json              # для формирования корректного ответа
 import time              # для работы с таймаутами
 import uuid              # генерация уникального идентификатора задания
+import sched             # модуль простого планировщика
 import queue             # работа с threadsafe очередью
 import shlex             # Лексиграфический разбор параметров
 import base64            # строка может быть и в base64 формате
+import fnmatch           # разбор пути до файла
 import datetime          # модуль для работы с датами
 import threading         # работа с мультипоточностью
 import subprocess        # работа с подпроцессами
 from aiohttp import web  # основной модуль на asyncio для работы с запросами и т.д.
 
+# service
+import simple_scheduler
+
 
 routes = web.RouteTableDef()
 
-PORT = int(os.getenv("MAIN_PORT")) or 3344
+PORT = int(os.getenv("MAIN_PORT") or 3345)
 
-TIMEOUT = int(os.getenv("TIMEOUT_FOR_CONVERT")) or 30
-TEMP_PATH_STP = "/tmp/share_{}.stp"
-TEMP_PATH_IMAGE = "/tmp/share_{}.jpg"
+TIMEOUT = int(os.getenv("TIMEOUT_FOR_CONVERT") or 30)
 
-THREAD_COUNT = int(os.getenv("MAX_COUNT_THREAD")) or 10  # Максимальное количество одновременно работающих потоков
-MAX_TASK_IN_QUEUE = int(os.getenv("MAX_TASKS")) or 1000   # Максимальное количество задач в очереди
+TEMP_FOLDER = "/tmp/"
 
-DEFAULT_WIDTH = int(os.getenv("DEFAULT_WIDTH")) or 1280
-DEFAULT_HEIGHT = int(os.getenv("DEFAULT_HEIGHT")) or 1024
+ENTER_EXT = ".stp"
+RESULT_EXT = ".png"
+
+TEMP_PATH_STP = TEMP_FOLDER + "share_{}" + ENTER_EXT
+TEMP_PATH_IMAGE = TEMP_FOLDER + "share_{}" + RESULT_EXT
+
+THREAD_COUNT = int(os.getenv("MAX_COUNT_THREAD") or 10)  # Максимальное количество одновременно работающих потоков
+MAX_TASK_IN_QUEUE = int(os.getenv("MAX_TASKS") or 1000)   # Максимальное количество задач в очереди
+
+DEFAULT_WIDTH = int(os.getenv("DEFAULT_WIDTH") or 1280)
+DEFAULT_HEIGHT = int(os.getenv("DEFAULT_HEIGHT") or 1024)
 DEFAULT_SCALE = 1  # Коэффициэнт сжатия изображения по диагонали
 
 MAX_CONTENT_SIZE = 1024**2*100 # Максимальный размер входного контента
@@ -40,6 +51,39 @@ RESPONSE_INFO = {
     "is_ok" : {"info":"Success", "code" : 200},
 }
 
+
+@simple_scheduler.async
+@simple_scheduler.schedule(600)
+def cleaner():
+    """
+    Метод удаляет все исходные и результирующие 
+    файлы созданных больше чем 10 часов назад
+    """
+
+    def delete_files(folder, pattern, hours=10):
+        """
+        Метод удаляем из указанной папки все 
+        возможные файлы которые попадают под 
+        паттерн и старше указанного количества часов
+        """
+
+        for root, _, files in os.walk(folder):
+            for filename in fnmatch.filter(files, pattern):
+                path = root + '/' + filename
+
+                if not os.path.isfile(path) or \
+                not os.access(path, os.R_OK):
+                    continue
+                
+                timestamp_from_file = datetime.datetime.fromtimestamp(os.path.getmtime(path))
+                if (datetime.datetime.now() - timestamp_from_file) > datetime.timedelta(hours=hours):
+                    os.remove(path)
+
+    # Удаляем исходные файлы
+    delete_files(TEMP_FOLDER, "*" + ENTER_EXT)
+    
+    # Удаляем результирующие файлы
+    delete_files(TEMP_FOLDER, "*" + RESULT_EXT)
 
 class Worker(threading.Thread):
     """
@@ -279,8 +323,6 @@ async def get_request(request):
             raise web.HTTPExpectationFailed
 
         return base64.b64encode(result_data).decode("utf-8")
-    
-    print(result_list)
 
     # Получаем идентификатор задачи, 
     # у которой требуется узнать результат
@@ -326,6 +368,9 @@ result_list = {}
 
 # Создаем набор потоков обслуживающих очередь
 workers=[Worker(task_queue) for x in range(THREAD_COUNT)]
+
+# Запускаем задачу по очистке временных файлов
+cleaner()
 
 # Запускаем веб приложение для обслуживания пославленных задач
 app = web.Application(client_max_size=MAX_CONTENT_SIZE)
